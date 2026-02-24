@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Workout Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#1877F2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <style>
+    :root {
+      --bg: #0b1220; --fg: #e6edf3; --muted: #9aa7b3; --card: #121a2b; --brand: #1877F2; --ok: #22c55e; --warn: #fbbf24; --danger: #ef4444; --border: #223049;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f7fafc; --fg: #0f172a; --muted: #526272; --card: #ffffff; --brand: #1877F2; --border: #e2e8f0; }
+    }
+    [data-theme='dark'] { --bg: #0b1220; --fg: #e6edf3; --muted: #9aa7b3; --card: #121a2b; --border: #223049; }
+    [data-theme='light'] { --bg: #f7fafc; --fg: #0f172a; --muted: #526272; --card: #ffffff; --border: #e2e8f0; }
+
+    html, body { height: 100%; }
+    body { margin: 0; font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--fg); }
+    .app { max-width: 720px; margin: 0 auto; padding: env(safe-area-inset-top) 12px 12px 12px; }
+    header { position: sticky; top: 0; background: var(--bg); z-index: 10; padding-top: 12px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .tabs { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; margin-top: 8px; }
+    .tab-btn { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--fg); text-align: center; cursor: pointer; }
+    .tab-btn.active { outline: 2px solid var(--brand); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 12px; }
+    input, select, button, textarea { font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--fg); }
+    input[type=number] { width: 100px; }
+    button.primary { background: var(--brand); color: white; border: none; }
+    button.ghost { background: transparent; border: 1px dashed var(--border); }
+    .exercise { padding: 8px; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; }
+    .muted { color: var(--muted); }
+    .pill { background: rgba(24,119,242,0.15); border: 1px solid rgba(24,119,242,0.35); padding: 4px 10px; border-radius: 999px; font-size: 13px; }
+    .right { margin-left: auto; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .set-row { display: grid; grid-template-columns: auto 1fr 1fr auto; gap: 8px; align-items: center; margin-top: 6px; }
+    .footer-space { height: 16vh; }
+    canvas { width: 100%; height: 48vh; background: transparent; display: block; }
+  </style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <div class="row">
+      <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px"/>
+      <h2 style="margin:0">Workout Tracker</h2>
+      <span class="pill" id="todayPill"></span>
+      <button id="themeBtn" class="right">🌙</button>
+    </div>
+    <div class="tabs">
+      <div class="tab-btn active" data-tab="plan">Plan</div>
+      <div class="tab-btn" data-tab="history">History</div>
+      <div class="tab-btn" data-tab="timer">Timer</div>
+      <div class="tab-btn" data-tab="charts">Charts</div>
+      <div class="tab-btn" data-tab="settings">Settings</div>
+    </div>
+  </header>
+
+  <section id="tab-plan" class="tab card">
+    <div class="grid2">
+      <div>
+        <label class="muted">Date</label>
+        <input type="date" id="dateInput"/>
+      </div>
+      <div>
+        <label class="muted">Day</label>
+        <input type="text" id="dayName" readonly/>
+      </div>
+    </div>
+    <div id="planContainer"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="saveSessionBtn" class="primary">Save Session</button>
+      <button id="clearWeightsBtn" class="ghost">Clear Weights</button>
+    </div>
+  </section>
+
+  <section id="tab-history" class="tab card" style="display:none">
+    <div class="row">
+      <input type="date" id="histFrom"/>
+      <input type="date" id="histTo"/>
+      <button id="histFilter">Filter</button>
+      <button id="exportCsv" class="right">Export CSV</button>
+    </div>
+    <div id="historyList" style="margin-top:10px"></div>
+  </section>
+
+  <section id="tab-timer" class="tab card" style="display:none">
+    <div class="row">
+      <button class="ghost preset" data-s="60">60s</button>
+      <button class="ghost preset" data-s="90">90s</button>
+      <button class="ghost preset" data-s="120">120s</button>
+      <button class="ghost preset" data-s="180">180s</button>
+    </div>
+    <div style="text-align:center;margin:16px 0">
+      <div style="font-size:48px" id="timerDisplay">00:00</div>
+      <div class="row" style="justify-content:center;margin-top:8px">
+        <button id="timerStart" class="primary">Start</button>
+        <button id="timerPause">Pause</button>
+        <button id="timerReset">Reset</button>
+      </div>
+    </div>
+    <p class="muted" style="text-align:center">Tip: keep the screen on during rests. We'll vibrate/beep when time's up (if allowed).</p>
+  </section>
+
+  <section id="tab-charts" class="tab card" style="display:none">
+    <div class="grid3">
+      <div>
+        <label class="muted">Metric</label>
+        <select id="chartMetric">
+          <option value="max">Heaviest Weight</option>
+          <option value="e1rm">Best Est. 1RM</option>
+          <option value="volume">Total Session Volume</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted">Exercise</label>
+        <select id="chartExercise"></select>
+      </div>
+      <div>
+        <label class="muted">Smoothing</label>
+        <select id="chartSmooth">
+          <option value="0">None</option>
+          <option value="3">3-pt moving avg</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input type="date" id="chartFrom"/>
+      <input type="date" id="chartTo"/>
+      <button id="chartUpdate">Update</button>
+      <button id="chartExport" class="right">Export PNG</button>
+    </div>
+    <canvas id="chartCanvas"></canvas>
+    <div class="muted" id="chartNote" style="margin-top:6px"></div>
+  </section>
+
+  <section id="tab-settings" class="tab card" style="display:none">
+    <h3 style="margin-top:0">Settings</h3>
+    <div class="row">
+      <label>Theme</label>
+      <select id="themeSelect">
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+
+    <h4>Routine (per day)</h4>
+    <p class="muted">Customize your plan. Edit JSON below and Save. Changes affect future days.</p>
+    <textarea id="routineEditor" rows="10" style="width:100%"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="saveRoutine" class="primary">Save Routine</button>
+      <button id="resetRoutine" class="ghost">Reset to Default</button>
+    </div>
+
+    <h4>Data</h4>
+    <div class="row">
+      <button id="exportData">Backup (JSON)</button>
+      <input type="file" id="importData" accept="application/json" />
+      <button id="clearAll" class="right" style="background:#3b0e0e;border-color:#7a1f1f">Clear All Data</button>
+    </div>
+  </section>
+
+  <div class="footer-space"></div>
+</div>
+
+<script>
+// ======= Data & Storage =======
+const LS_KEYS = { ROUTINE: 'wt_routine_v1', LOGS: 'wt_logs_v1', THEME: 'wt_theme_v1' };
+
+const DEFAULT_ROUTINE = {
+  "Monday": [
+    { name: "Bench Press (Barbell)", sets: 4, reps: 8 },
+    { name: "Incline Dumbbell Press", sets: 3, reps: 10 },
+    { name: "Cable Fly", sets: 3, reps: 12 },
+    { name: "Triceps Pushdown", sets: 3, reps: 12 },
+    { name: "Overhead Triceps Extension", sets: 3, reps: 10 }
+  ],
+  "Tuesday": [
+    { name: "Deadlift", sets: 3, reps: 5 },
+    { name: "Lat Pulldown", sets: 4, reps: 8 },
+    { name: "Seated Row", sets: 3, reps: 10 },
+    { name: "Face Pull", sets: 3, reps: 12 },
+    { name: "EZ-Bar Curl", sets: 3, reps: 10 }
+  ],
+  "Wednesday": [
+    { name: "Back Squat", sets: 4, reps: 5 },
+    { name: "Leg Press", sets: 3, reps: 10 },
+    { name: "Romanian Deadlift", sets: 3, reps: 8 },
+    { name: "Leg Curl", sets: 3, reps: 12 },
+    { name: "Standing Calf Raise", sets: 4, reps: 12 }
+  ],
+  "Thursday": [
+    { name: "Overhead Press", sets: 4, reps: 6 },
+    { name: "Lateral Raise", sets: 3, reps: 12 },
+    { name: "Rear Delt Fly", sets: 3, reps: 12 },
+    { name: "Upright Row", sets: 3, reps: 10 },
+    { name: "Shrugs", sets: 3, reps: 12 }
+  ],
+  "Friday": [
+    { name: "Pull-Up", sets: 3, reps: 8 },
+    { name: "Bench Press (Barbell)", sets: 3, reps: 5 },
+    { name: "Barbell Row", sets: 3, reps: 8 },
+    { name: "Front Squat", sets: 3, reps: 5 },
+    { name: "Plank (sec)", sets: 3, reps: 60 }
+  ],
+  "Saturday": [
+    { name: "Optional Accessory Day", sets: 3, reps: 12 }
+  ],
+  "Sunday": []
+};
+
+function loadRoutine() {
+  try { return JSON.parse(localStorage.getItem(LS_KEYS.ROUTINE)) || structuredClone(DEFAULT_ROUTINE); } catch { return structuredClone(DEFAULT_ROUTINE); }
+}
+function saveRoutine(r) { localStorage.setItem(LS_KEYS.ROUTINE, JSON.stringify(r)); }
+function loadLogs() { try { return JSON.parse(localStorage.getItem(LS_KEYS.LOGS)) || []; } catch { return []; } }
+function saveLogs(logs) { localStorage.setItem(LS_KEYS.LOGS, JSON.stringify(logs)); }
+
+// ======= Helpers =======
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+function fmtDate(d) { return new Date(d).toISOString().slice(0,10); }
+function dayNameFromDateStr(s) { return new Date(s+'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' }); }
+function createId() { return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()); }
+
+// ======= Theme =======
+function applyTheme() {
+  const pref = localStorage.getItem(LS_KEYS.THEME) || 'auto';
+  document.getElementById('themeSelect').value = pref;
+  if (pref === 'auto') { document.documentElement.removeAttribute('data-theme'); }
+  else { document.documentElement.setAttribute('data-theme', pref); }
+}
+applyTheme();
+$('#themeBtn').addEventListener('click', () => {
+  const cur = localStorage.getItem(LS_KEYS.THEME) || 'auto';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  localStorage.setItem(LS_KEYS.THEME, next);
+  applyTheme();
+});
+$('#themeSelect').addEventListener('change', (e) => {
+  localStorage.setItem(LS_KEYS.THEME, e.target.value);
+  applyTheme();
+});
+
+// ======= Tabs =======
+$$('.tab-btn').forEach(b => b.addEventListener('click', () => {
+  $$('.tab-btn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const tab = b.dataset.tab;
+  $$('.tab').forEach(s => s.style.display = 'none');
+  document.getElementById('tab-'+tab).style.display = '';
+  if (tab === 'history') renderHistory();
+  if (tab === 'charts') { populateChartControls(); renderChart(); }
+}));
+
+// ======= Plan =======
+const dateInput = document.getElementById('dateInput');
+const dayNameEl = document.getElementById('dayName');
+const planContainer = document.getElementById('planContainer');
+
+function renderPlanFor(dateStr) {
+  const routine = loadRoutine();
+  const dn = dayNameFromDateStr(dateStr);
+  dayNameEl.value = dn;
+  const plan = routine[dn] || [];
+
+  planContainer.innerHTML = '';
+  if (!plan.length) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<p class="muted">No preset exercises for ${dn}. Add in Settings → Routine, or switch dates.</p>`;
+    planContainer.appendChild(div);
+    return;
+  }
+
+  plan.forEach(ex => {
+    const wrap = document.createElement('div');
+    wrap.className = 'exercise';
+    wrap.innerHTML = `
+      <div class="row">
+        <strong>${ex.name}</strong>
+        <span class="pill">${ex.sets} × ${ex.reps}</span>
+        <button class="ghost right copy-last">Copy Last</button>
+      </div>
+      <div class="sets">
+        ${Array.from({length: ex.sets}).map((_,i)=>`<div class="set-row">
+          <span class="muted">Set ${i+1}</span>
+          <input type="number" inputmode="decimal" step="0.5" min="0" placeholder="Weight" class="w" />
+          <input type="number" step="1" min="0" value="${ex.reps}" class="r" />
+          <input type="text" placeholder="Notes" class="n"/>
+        </div>`).join('')}
+      </div>
+    `;
+    planContainer.appendChild(wrap);
+
+    wrap.querySelector('.copy-last').addEventListener('click', () => {
+      const logs = loadLogs();
+      for (const sess of logs) {
+        for (const item of sess.items) {
+          if (item.exercise === ex.name && item.weights && item.weights.length) {
+            const rows = wrap.querySelectorAll('.set-row');
+            rows.forEach((row, idx) => {
+              const wInput = row.querySelector('.w');
+              const rInput = row.querySelector('.r');
+              wInput.value = item.weights[Math.min(idx, item.weights.length-1)] ?? '';
+              rInput.value = (item.reps && item.reps[idx] != null) ? item.reps[idx] : rInput.value;
+            });
+            return;
+          }
+        }
+      }
+      alert('No previous weights found for this exercise.');
+    });
+  });
+}
+
+function collectSession(dateStr) {
+  const dn = dayNameFromDateStr(dateStr);
+  const items = [];
+  planContainer.querySelectorAll('.exercise').forEach(exEl => {
+    const title = exEl.querySelector('strong').textContent;
+    const pill = exEl.querySelector('.pill').textContent.trim();
+    const m = pill.match(/(\d+) × (\d+)/);
+    const targetSets = m ? parseInt(m[1]) : 0;
+    const targetReps = m ? parseInt(m[2]) : 0;
+    const weights = [];
+    const reps = [];
+    const notes = [];
+    exEl.querySelectorAll('.set-row').forEach(row => {
+      const w = row.querySelector('.w').value;
+      const r = row.querySelector('.r').value;
+      const n = row.querySelector('.n').value.trim();
+      weights.push(w === '' ? null : parseFloat(w));
+      reps.push(r === '' ? null : parseInt(r));
+      notes.push(n);
+    });
+    items.push({ exercise: title, targetSets, targetReps, weights, reps, notes });
+  });
+  return { id: createId(), date: dateStr, dayName: dn, items, savedAt: Date.now() };
+}
+
+function clearWeights() { planContainer.querySelectorAll('.set-row .w').forEach(i => i.value = ''); }
+
+const today = new Date();
+const todayStr = today.toISOString().slice(0,10);
+document.getElementById('todayPill').textContent = today.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+$('#dateInput').value = todayStr;
+renderPlanFor(todayStr);
+
+$('#dateInput').addEventListener('change', e => renderPlanFor(e.target.value));
+$('#saveSessionBtn').addEventListener('click', () => {
+  const ds = $('#dateInput').value || todayStr;
+  const session = collectSession(ds);
+  const logs = loadLogs();
+  const idx = logs.findIndex(s => s.date === ds);
+  if (idx >= 0) logs.splice(idx, 1);
+  logs.unshift(session);
+  saveLogs(logs);
+  alert('Session saved!');
+});
+$('#clearWeightsBtn').addEventListener('click', clearWeights);
+
+// ======= History =======
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  const logs = loadLogs();
+  const from = document.getElementById('histFrom').value || '0000-01-01';
+  const to = document.getElementById('histTo').value || '9999-12-31';
+  const filtered = logs.filter(s => s.date >= from && s.date <= to);
+  if (!filtered.length) { list.innerHTML = '<p class="muted">No sessions yet. Save a workout from the Plan tab.</p>'; return; }
+  list.innerHTML = filtered.map(s => `
+    <div class="exercise" style="padding:10px">
+      <div class="row"><strong>${new Date(s.date+'T12:00:00').toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'})}</strong>
+        <span class="pill">${s.items.length} exercises</span>
+        <button class="ghost right" data-id="${s.id}">Delete</button>
+      </div>
+      ${s.items.map(it => `
+        <div style="margin-top:6px">
+          <div><b>${it.exercise}</b> <span class="muted">(${it.targetSets} × ${it.targetReps})</span></div>
+          <div class="muted">Weights: ${it.weights.map(w => w ?? '-').join(', ')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+  list.querySelectorAll('button[data-id]').forEach(btn => btn.addEventListener('click', () => {
+    if (!confirm('Delete this session?')) return;
+    const id = btn.getAttribute('data-id');
+    const logs2 = loadLogs().filter(s => s.id !== id);
+    saveLogs(logs2);
+    renderHistory();
+  }));
+}
+
+document.getElementById('histFilter').addEventListener('click', renderHistory);
+
+document.getElementById('exportCsv').addEventListener('click', () => {
+  const logs = loadLogs();
+  const header = ['date','day','exercise','set','target_reps','actual_reps','weight','note'];
+  const rows = [header.join(',')];
+  for (const s of logs) {
+    for (const item of s.items) {
+      for (let i=0;i<item.weights.length;i++) {
+        const weight = item.weights[i];
+        const rep = (item.reps && item.reps[i] != null) ? item.reps[i] : '';
+        const note = (item.notes && item.notes[i]) ? String(item.notes[i]).replace(/"/g,'""') : '';
+        const safeNote = /[",\n]/.test(note) ? '"'+note+'"' : note;
+        rows.push([s.date, s.dayName, item.exercise, i+1, item.targetReps, rep, weight ?? '', safeNote].join(','));
+      }
+    }
+  }
+  const csv = rows.join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'workout_history.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+});
+
+// ======= Charts =======
+function getAllExerciseNames() {
+  const logs = loadLogs();
+  const set = new Set();
+  for (const s of logs) for (const it of s.items) if (it.exercise) set.add(it.exercise);
+  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
+function populateChartControls() {
+  const metricSel = $('#chartMetric');
+  const exSel = $('#chartExercise');
+  const names = getAllExerciseNames();
+  exSel.innerHTML = names.map(n => `<option>${n}</option>`).join('');
+  if (!exSel.value && names.length) exSel.value = names[0];
+  // If metric is volume, disable exercise select
+  exSel.disabled = metricSel.value === 'volume';
+}
+$('#chartMetric').addEventListener('change', () => { $('#chartExercise').disabled = ($('#chartMetric').value === 'volume'); });
+$('#chartUpdate').addEventListener('click', renderChart);
+$('#chartExport').addEventListener('click', () => {
+  const c = document.getElementById('chartCanvas');
+  const a = document.createElement('a');
+  a.href = c.toDataURL('image/png');
+  a.download = 'progress_chart.png';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+
+function est1RM(weight, reps) { if (!weight || !reps) return null; return weight * (1 + reps/30); }
+
+function buildSeries(metric, exercise, from, to) {
+  const logs = loadLogs().slice().reverse(); // chronological
+  const points = []; // {x: Date, y: number}
+  for (const s of logs) {
+    if ((from && s.date < from) || (to && s.date > to)) continue;
+    if (metric === 'volume') {
+      let vol = 0;
+      for (const it of s.items) {
+        for (let i=0;i<it.weights.length;i++) {
+          const w = it.weights[i]; const r = (it.reps && it.reps[i] != null) ? it.reps[i] : null;
+          if (w != null && r != null) vol += w * r;
+        }
+      }
+      points.push({ x: new Date(s.date+'T12:00:00'), y: vol });
+    } else {
+      // Exercise based
+      const item = s.items.find(it => it.exercise === exercise);
+      if (!item) continue;
+      if (metric === 'max') {
+        const max = item.weights.filter(w => w != null).reduce((a,b)=>Math.max(a,b), -Infinity);
+        if (max > -Infinity) points.push({ x: new Date(s.date+'T12:00:00'), y: max });
+      } else if (metric === 'e1rm') {
+        let best = null;
+        for (let i=0;i<item.weights.length;i++) {
+          const w = item.weights[i]; const r = (item.reps && item.reps[i] != null) ? item.reps[i] : item.targetReps;
+          if (w != null && r != null) {
+            const val = est1RM(w, r);
+            if (best == null || val > best) best = val;
+          }
+        }
+        if (best != null) points.push({ x: new Date(s.date+'T12:00:00'), y: best });
+      }
+    }
+  }
+  return points;
+}
+
+function smoothSeries(points, k) {
+  if (!k || k <= 1) return points;
+  const half = Math.floor(k/2);
+  const out = [];
+  for (let i=0;i<points.length;i++) {
+    let sum = 0, cnt = 0;
+    for (let j=i-half; j<=i+half; j++) {
+      if (j>=0 && j<points.length) { sum += points[j].y; cnt++; }
+    }
+    out.push({ x: points[i].x, y: cnt? sum/cnt : points[i].y });
+  }
+  return out;
+}
+
+function renderChart() {
+  const metric = $('#chartMetric').value; const exercise = $('#chartExercise').value;
+  const from = $('#chartFrom').value || null; const to = $('#chartTo').value || null;
+  const smoothK = parseInt($('#chartSmooth').value);
+  let series = buildSeries(metric, exercise, from, to);
+  const rawCount = series.length;
+  if (series.length === 0) {
+    $('#chartNote').textContent = 'No data to chart yet. Save some sessions first.';
+  } else {
+    $('#chartNote').textContent = rawCount + ' points' + (smoothK>1? ` (smoothed ${smoothK}-pt)`:'');
+  }
+  series = smoothSeries(series, smoothK);
+  drawLineChart(series, { metric, exercise });
+}
+
+function drawLineChart(points, cfg) {
+  const canvas = document.getElementById('chartCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth; const cssH = canvas.clientHeight;
+  canvas.width = Math.floor(cssW * dpr); canvas.height = Math.floor(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  // Clear
+  ctx.clearRect(0,0,cssW,cssH);
+  const fg = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#e6edf3';
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#9aa7b3';
+  const brand = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim() || '#1877F2';
+
+  // Margins
+  const m = { left: 42, right: 12, top: 20, bottom: 28 };
+  const w = cssW - m.left - m.right; const h = cssH - m.top - m.bottom;
+  // Axes and scales
+  if (!points.length) {
+    ctx.fillStyle = muted; ctx.fillText('No data', m.left + 10, m.top + 20); return;
+  }
+  const xs = points.map(p=>p.x.getTime());
+  const ys = points.map(p=>p.y);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const padY = (yMax - yMin) * 0.1 || 1;
+  const ymin = yMin - padY; const ymax = yMax + padY;
+  function xToPx(x){ return m.left + ( (x - xMin) / (xMax - xMin || 1) ) * w; }
+  function yToPx(y){ return m.top + h - ( (y - ymin) / (ymax - ymin || 1) ) * h; }
+
+  // Gridlines (Y)
+  ctx.strokeStyle = 'rgba(128,128,128,0.25)'; ctx.lineWidth = 1;
+  const ticks = 5;
+  ctx.font = '12px -apple-system, system-ui, Arial'; ctx.fillStyle = muted;
+  for (let i=0;i<=ticks;i++) {
+    const yy = ymin + (i/ticks)*(ymax - ymin);
+    const py = yToPx(yy);
+    ctx.beginPath(); ctx.moveTo(m.left, py); ctx.lineTo(cssW - m.right, py); ctx.stroke();
+    ctx.fillText(yy.toFixed(0), 4, py+4);
+  }
+  // X labels
+  const every = Math.max(1, Math.floor(points.length / 6));
+  for (let i=0;i<points.length;i+=every) {
+    const p = points[i]; const px = xToPx(p.x.getTime());
+    const d = p.x.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+    ctx.fillText(d, px-18, cssH - 6);
+  }
+
+  // Line
+  ctx.strokeStyle = brand; ctx.lineWidth = 2; ctx.beginPath();
+  points.forEach((p,idx)=>{ const px=xToPx(p.x.getTime()), py=yToPx(p.y); if(idx===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); });
+  ctx.stroke();
+  // Points
+  ctx.fillStyle = brand;
+  points.forEach(p=>{ const px=xToPx(p.x.getTime()), py=yToPx(p.y); ctx.beginPath(); ctx.arc(px,py,3,0,Math.PI*2); ctx.fill(); });
+
+  // Title
+  ctx.fillStyle = fg; ctx.font = '14px -apple-system, system-ui, Arial';
+  const title = (cfg.metric==='volume' ? 'Total Session Volume' : (cfg.metric==='e1rm' ? `Best Est. 1RM — ${cfg.exercise}` : `Heaviest Weight — ${cfg.exercise}`));
+  ctx.fillText(title, m.left, 16);
+}
+
+// ======= Settings / Routine =======
+function loadRoutineIntoEditor() { document.getElementById('routineEditor').value = JSON.stringify(loadRoutine(), null, 2); }
+loadRoutineIntoEditor();
+
+document.getElementById('saveRoutine').addEventListener('click', () => {
+  try { const r = JSON.parse(document.getElementById('routineEditor').value); saveRoutine(r); alert('Routine saved.'); renderPlanFor($('#dateInput').value || todayStr); }
+  catch (e) { alert('Invalid JSON.'); }
+});
+
+document.getElementById('resetRoutine').addEventListener('click', () => {
+  if (!confirm('Reset routine to default?')) return;
+  saveRoutine(DEFAULT_ROUTINE); loadRoutineIntoEditor(); renderPlanFor($('#dateInput').value || todayStr);
+});
+
+document.getElementById('exportData').addEventListener('click', () => {
+  const data = { routine: loadRoutine(), logs: loadLogs(), theme: localStorage.getItem(LS_KEYS.THEME)||'auto' };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'workout_backup.json';
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
+});
+
+const importInput = document.getElementById('importData');
+importInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return; const text = await file.text();
+  try { const data = JSON.parse(text); if (data.routine) saveRoutine(data.routine); if (data.logs) saveLogs(data.logs); if (data.theme) localStorage.setItem(LS_KEYS.THEME, data.theme); alert('Import complete.'); loadRoutineIntoEditor(); }
+  catch (e) { alert('Invalid JSON'); }
+});
+
+document.getElementById('clearAll').addEventListener('click', () => {
+  if (!confirm('This will delete all logs and settings. Continue?')) return;
+  localStorage.removeItem(LS_KEYS.ROUTINE); localStorage.removeItem(LS_KEYS.LOGS); localStorage.removeItem(LS_KEYS.THEME); location.reload();
+});
+
+// ======= Timer =======
+let remaining = 0; let running = false; let interval = null; let audioCtx = null;
+function updateTimerDisplay() { const m = Math.floor(remaining/60).toString().padStart(2,'0'); const s = Math.floor(remaining%60).toString().padStart(2,'0'); document.getElementById('timerDisplay').textContent = `${m}:${s}`; }
+function beep() { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.05; o.start(); setTimeout(()=>{ o.stop(); }, 300); } catch(e){} if (navigator.vibrate) try { navigator.vibrate([200,100,200]); } catch {} }
+function finishSignal() { beep(); setTimeout(beep, 400); setTimeout(beep, 800); }
+function startTimer() { if (remaining <= 0) return; running = true; clearInterval(interval); interval = setInterval(() => { remaining -= 1; updateTimerDisplay(); if (remaining <= 0) { clearInterval(interval); running = false; finishSignal(); } }, 1000); }
+function pauseTimer() { running = false; clearInterval(interval); }
+function resetTimer() { pauseTimer(); remaining = 0; updateTimerDisplay(); }
+$$('.preset').forEach(b => b.addEventListener('click', () => { remaining = parseInt(b.dataset.s); updateTimerDisplay(); }));
+$('#timerStart').addEventListener('click', startTimer);
+$('#timerPause').addEventListener('click', pauseTimer);
+$('#timerReset').addEventListener('click', resetTimer);
+updateTimerDisplay();
+
+// ======= PWA =======
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); }); }
+</script>
+</body>
+</html>
